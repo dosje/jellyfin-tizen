@@ -85,17 +85,17 @@ jobs:
           mkdir -p "$PROFILE_DIR"
           tizen cli-config "default.profiles.path=$PROFILE_DIR/profiles.xml"
 
-          # Write profiles.xml line by line to avoid YAML/heredoc conflicts
-          echo '<?xml version="1.0" encoding="UTF-8" standalone="no"?>'          > "$PROFILE_DIR/profiles.xml"
-          echo '<profiles active="JellyfinProfile" version="4.0">'               >> "$PROFILE_DIR/profiles.xml"
-          echo '  <profile name="JellyfinProfile">'                              >> "$PROFILE_DIR/profiles.xml"
-          echo "    <profileitem ca=\"\" distributorSigner=\"\" key=\"$KEYSTORE_DIR/author.p12\" password=\"$CERT_PASSWORD\" rootca=\"\" type=\"Author\"/>"           >> "$PROFILE_DIR/profiles.xml"
-          echo "    <profileitem ca=\"\" distributorSigner=\"\" key=\"$DISTRIBUTOR_KEY\" password=\"tizenpkcs12passfordsign\" rootca=\"\" type=\"Distributor\"/>"     >> "$PROFILE_DIR/profiles.xml"
-          echo '    <profileitem ca="" distributorSigner="" key="" password="" rootca="" type="Distributor2"/>'  >> "$PROFILE_DIR/profiles.xml"
-          echo '  </profile>'                                                     >> "$PROFILE_DIR/profiles.xml"
-          echo '</profiles>'                                                      >> "$PROFILE_DIR/profiles.xml"
+          # Use the Tizen CLI to create the security profile so it encrypts the
+          # passwords correctly in profiles.xml. Manually writing plaintext passwords
+          # fails because tizen package tries to decrypt them.
+          tizen security-profiles add \
+            -n JellyfinProfile \
+            -a "$KEYSTORE_DIR/author.p12" \
+            -p "$CERT_PASSWORD" \
+            -d "$DISTRIBUTOR_KEY" \
+            -dp "tizenpkcs12passfordsign"
 
-          echo "profiles.xml written:"
+          echo "Profile created. profiles.xml:"
           cat "$PROFILE_DIR/profiles.xml"
 
       - name: Clone and build Jellyfin Web
