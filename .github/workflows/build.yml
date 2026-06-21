@@ -1,0 +1,80 @@
+name: Build Jellyfin.wgt
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Set up Java (required by Tizen Studio)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Tizen Studio CLI
+        run: |
+          curl -fsSL -o tizen-studio-cli.bin \
+            "https://download.tizen.org/sdk/Installer/tizen-studio_6.0/web-cli_Tizen_Studio_6.0_ubuntu-64.bin"
+          chmod +x tizen-studio-cli.bin
+          ./tizen-studio-cli.bin --accept-license "$HOME/tizen-studio"
+          echo "$HOME/tizen-studio/tools/ide/bin" >> "$GITHUB_PATH"
+
+      - name: Set up signing certificate
+        env:
+          TIZEN_CERT_BASE64: ${{ secrets.TIZEN_CERT_BASE64 }}
+          TIZEN_CERT_PASSWORD: ${{ secrets.TIZEN_CERT_PASSWORD }}
+        run: |
+          KEYSTORE_DIR="$HOME/tizen-studio-data/keystore/author"
+          mkdir -p "$KEYSTORE_DIR"
+          echo "$TIZEN_CERT_BASE64" | base64 -d > "$KEYSTORE_DIR/author.p12"
+
+          PROFILE_DIR="$HOME/tizen-studio-data/profile"
+          mkdir -p "$PROFILE_DIR"
+
+          DISTRIBUTOR_KEY="$HOME/tizen-studio/tools/certificate-generator/certificates/distributor/tizen-distributor-signer.p12"
+
+          cat > "$PROFILE_DIR/profiles.xml" <<EOF
+          <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+          <profiles active="JellyfinProfile" version="4.0">
+            <profile name="JellyfinProfile">
+              <profileitem ca="" distributorSigner="" key="$KEYSTORE_DIR/author.p12" password="$TIZEN_CERT_PASSWORD" rootca="" type="Author"/>
+              <profileitem ca="" distributorSigner="" key="$DISTRIBUTOR_KEY" password="tizenpkcs12passfordsign" rootca="" type="Distributor"/>
+              <profileitem ca="" distributorSigner="" key="" password="" rootca="" type="Distributor2"/>
+            </profile>
+          </profiles>
+          EOF
+
+      - name: Prepare Jellyfin interface (www/)
+        run: npm ci --no-audit
+
+      - name: Build WGT
+        run: |
+          tizen build-web \
+            -e ".*" \
+            -e "gulpfile.babel.js" \
+            -e "README.md" \
+            -e "node_modules/*" \
+            -e "package*.json" \
+            -e "yarn.lock"
+          tizen package -t wgt -s JellyfinProfile -o . -- .buildResult
+
+      - name: Upload WGT artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jellyfin-${{ github.ref_name }}-${{ github.run_number }}
+          path: Jellyfin.wgt
+          retention-days: 30
