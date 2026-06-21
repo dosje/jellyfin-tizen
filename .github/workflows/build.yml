@@ -28,7 +28,7 @@ jobs:
       - name: Install Tizen Studio CLI
         run: |
           curl -fsSL -o tizen-studio-cli.bin \
-            "https://download.tizen.org/sdk/Installer/tizen-studio_6.0/web-cli_Tizen_Studio_6.0_ubuntu-64.bin"
+            "https://download.tizen.org/sdk/Installer/tizen-studio_5.5/web-cli_Tizen_Studio_5.5_ubuntu-64.bin"
           chmod +x tizen-studio-cli.bin
           ./tizen-studio-cli.bin --accept-license "$HOME/tizen-studio"
           echo "$HOME/tizen-studio/tools/ide/bin" >> "$GITHUB_PATH"
@@ -73,13 +73,30 @@ jobs:
             DISTRIBUTOR_KEY=$(find "$HOME/tizen-studio" -path "*/public*" -name "tizen-distributor-signer.p12" 2>/dev/null | head -1)
           fi
           if [ -z "$DISTRIBUTOR_KEY" ]; then
-            echo "All .p12 files in Tizen Studio:"; find "$HOME/tizen-studio" -name "*.p12" 2>/dev/null
             DISTRIBUTOR_KEY=$(find "$HOME/tizen-studio" -name "tizen-distributor-signer.p12" 2>/dev/null | head -1)
           fi
           if [ -z "$DISTRIBUTOR_KEY" ]; then
-            echo "ERROR: tizen-distributor-signer.p12 not found"; exit 1
+            echo "ERROR: tizen-distributor-signer.p12 not found"
+            find "$HOME/tizen-studio" -name "*.p12" 2>/dev/null
+            exit 1
           fi
           echo "Distributor key: $DISTRIBUTOR_KEY"
+          ls -la "$DISTRIBUTOR_KEY"
+
+          # Probe for the correct P12 password — it has changed between SDK versions.
+          DIST_PASS=""
+          for CANDIDATE in "tizenpkcs12passfordsign" "" "tizen" "1234567890"; do
+            if openssl pkcs12 -info -in "$DISTRIBUTOR_KEY" -passin "pass:$CANDIDATE" -noout 2>/dev/null; then
+              DIST_PASS="$CANDIDATE"
+              echo "Distributor cert password found: '${DIST_PASS}'"
+              break
+            fi
+          done
+          if [ -z "$DIST_PASS" ] && ! openssl pkcs12 -info -in "$DISTRIBUTOR_KEY" -passin "pass:" -noout 2>/dev/null; then
+            echo "ERROR: could not open distributor cert with any known password"
+            openssl pkcs12 -info -in "$DISTRIBUTOR_KEY" -passin "pass:tizenpkcs12passfordsign" -noout 2>&1 || true
+            exit 1
+          fi
 
           PROFILE_DIR="$HOME/tizen-studio-data/profile"
           mkdir -p "$PROFILE_DIR"
@@ -93,7 +110,7 @@ jobs:
             -a "$KEYSTORE_DIR/author.p12" \
             -p "$CERT_PASSWORD" \
             -d "$DISTRIBUTOR_KEY" \
-            -dp "tizenpkcs12passfordsign"
+            -dp "$DIST_PASS"
 
           echo "Profile created. profiles.xml:"
           cat "$PROFILE_DIR/profiles.xml"
