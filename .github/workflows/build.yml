@@ -23,7 +23,9 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          # Java 17+ rejects the legacy RC2/3DES PKCS12 encryption used by the
+          # Tizen sdk-public distributor cert. Java 11 still allows it.
+          java-version: '11'
 
       - name: Install Tizen Studio CLI
         run: |
