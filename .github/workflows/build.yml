@@ -58,8 +58,17 @@ jobs:
           </profiles>
           EOF
 
+      - name: Clone and build Jellyfin Web
+        run: |
+          # Match the branch to the jellyfin-web version declared in package.json
+          git clone --depth 1 -b master \
+            https://github.com/jellyfin/jellyfin-web.git ../jellyfin-web
+          cd ../jellyfin-web
+          npm ci --no-audit
+          USE_SYSTEM_FONTS=1 npm run build:production
+
       - name: Prepare Jellyfin interface (www/)
-        run: npm ci --no-audit
+        run: JELLYFIN_WEB_DIR=../jellyfin-web/dist npm ci --no-audit
 
       - name: Build WGT
         run: |
