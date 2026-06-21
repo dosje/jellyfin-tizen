@@ -16,7 +16,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Set up Java (required by Tizen Studio)
@@ -61,7 +61,7 @@ jobs:
       - name: Clone and build Jellyfin Web
         run: |
           # Match the branch to the jellyfin-web version declared in package.json
-          git clone --depth 1 -b master \
+          git clone --depth 1 -b release-10.10.z \
             https://github.com/jellyfin/jellyfin-web.git ../jellyfin-web
           cd ../jellyfin-web
           npm ci --no-audit
