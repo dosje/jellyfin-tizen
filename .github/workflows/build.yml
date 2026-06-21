@@ -62,18 +62,32 @@ jobs:
 
           PROFILE_DIR="$HOME/tizen-studio-data/profile"
           mkdir -p "$PROFILE_DIR"
-          DISTRIBUTOR_KEY="$HOME/tizen-studio/tools/certificate-generator/certificates/distributor/tizen-distributor-signer.p12"
 
-          cat > "$PROFILE_DIR/profiles.xml" <<EOF
-          <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-          <profiles active="JellyfinProfile" version="4.0">
-            <profile name="JellyfinProfile">
-              <profileitem ca="" distributorSigner="" key="$KEYSTORE_DIR/author.p12" password="$CERT_PASSWORD" rootca="" type="Author"/>
-              <profileitem ca="" distributorSigner="" key="$DISTRIBUTOR_KEY" password="tizenpkcs12passfordsign" rootca="" type="Distributor"/>
-              <profileitem ca="" distributorSigner="" key="" password="" rootca="" type="Distributor2"/>
-            </profile>
-          </profiles>
-          EOF
+          # Find the distributor key bundled with Tizen Studio (path differs per version)
+          DISTRIBUTOR_KEY=$(find "$HOME/tizen-studio" -name "tizen-distributor-signer.p12" 2>/dev/null | head -1)
+          if [ -z "$DISTRIBUTOR_KEY" ]; then
+            echo "ERROR: tizen-distributor-signer.p12 not found in Tizen Studio"
+            find "$HOME/tizen-studio" -name "*.p12" 2>/dev/null || true
+            exit 1
+          fi
+          echo "Distributor key: $DISTRIBUTOR_KEY"
+
+          # Point the Tizen CLI at our profiles file
+          tizen cli-config "default.profiles.path=$PROFILE_DIR/profiles.xml"
+
+          # Write profiles.xml using printf to avoid YAML heredoc conflicts
+          printf '%s\n' \
+            '<?xml version="1.0" encoding="UTF-8" standalone="no"?>' \
+            '<profiles active="JellyfinProfile" version="4.0">' \
+            '  <profile name="JellyfinProfile">' \
+            "    <profileitem ca=\"\" distributorSigner=\"\" key=\"$KEYSTORE_DIR/author.p12\" password=\"$CERT_PASSWORD\" rootca=\"\" type=\"Author\"/>" \
+            "    <profileitem ca=\"\" distributorSigner=\"\" key=\"$DISTRIBUTOR_KEY\" password=\"tizenpkcs12passfordsign\" rootca=\"\" type=\"Distributor\"/>" \
+            '    <profileitem ca="" distributorSigner="" key="" password="" rootca="" type="Distributor2"/>' \
+            '  </profile>' \
+            '</profiles>' \
+            > "$PROFILE_DIR/profiles.xml"
+
+          echo "profiles.xml written:"; cat "$PROFILE_DIR/profiles.xml"
 
       - name: Clone and build Jellyfin Web
         run: |
