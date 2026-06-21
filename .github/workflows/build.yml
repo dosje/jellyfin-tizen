@@ -40,18 +40,35 @@ jobs:
         run: |
           KEYSTORE_DIR="$HOME/tizen-studio-data/keystore/author"
           mkdir -p "$KEYSTORE_DIR"
-          echo "$TIZEN_CERT_BASE64" | base64 -d > "$KEYSTORE_DIR/author.p12"
+
+          if [ -n "$TIZEN_CERT_BASE64" ]; then
+            echo "Using certificate from repository secret"
+            echo "$TIZEN_CERT_BASE64" | base64 -d > "$KEYSTORE_DIR/author.p12"
+            CERT_PASSWORD="$TIZEN_CERT_PASSWORD"
+          else
+            echo "No secret found — generating self-signed author certificate"
+            CERT_PASSWORD="tizenselfcert"
+            keytool -genkeypair \
+              -alias author \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 3650 \
+              -storetype PKCS12 \
+              -storepass "$CERT_PASSWORD" \
+              -keypass "$CERT_PASSWORD" \
+              -dname "CN=JellyfinAuthor, O=Jellyfin, C=LU" \
+              -keystore "$KEYSTORE_DIR/author.p12"
+          fi
 
           PROFILE_DIR="$HOME/tizen-studio-data/profile"
           mkdir -p "$PROFILE_DIR"
-
           DISTRIBUTOR_KEY="$HOME/tizen-studio/tools/certificate-generator/certificates/distributor/tizen-distributor-signer.p12"
 
           cat > "$PROFILE_DIR/profiles.xml" <<EOF
           <?xml version="1.0" encoding="UTF-8" standalone="no"?>
           <profiles active="JellyfinProfile" version="4.0">
             <profile name="JellyfinProfile">
-              <profileitem ca="" distributorSigner="" key="$KEYSTORE_DIR/author.p12" password="$TIZEN_CERT_PASSWORD" rootca="" type="Author"/>
+              <profileitem ca="" distributorSigner="" key="$KEYSTORE_DIR/author.p12" password="$CERT_PASSWORD" rootca="" type="Author"/>
               <profileitem ca="" distributorSigner="" key="$DISTRIBUTOR_KEY" password="tizenpkcs12passfordsign" rootca="" type="Distributor"/>
               <profileitem ca="" distributorSigner="" key="" password="" rootca="" type="Distributor2"/>
             </profile>
