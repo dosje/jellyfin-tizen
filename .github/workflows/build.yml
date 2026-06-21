@@ -35,6 +35,37 @@ jobs:
           ./tizen-studio-cli.bin --accept-license "$HOME/tizen-studio"
           echo "$HOME/tizen-studio/tools/ide/bin" >> "$GITHUB_PATH"
 
+      - name: Diagnose Tizen cert setup
+        run: |
+          echo "=== Java version in PATH ==="
+          java -version 2>&1 || echo "no java in PATH"
+
+          echo "=== Tizen script Java lookup ==="
+          head -80 "$HOME/tizen-studio/tools/ide/bin/tizen" 2>/dev/null || echo "script not found"
+
+          echo "=== Embedded JDK search ==="
+          find "$HOME/tizen-studio" -name "java" -type f 2>/dev/null | head -5
+
+          DIST_P12=$(find "$HOME/tizen-studio" -path "*/sdk-public*" -name "*.p12" 2>/dev/null | head -1)
+          echo "=== Distributor P12 file ==="
+          ls -la "$DIST_P12"
+
+          echo "=== ASN1 outer structure (no password needed) ==="
+          openssl asn1parse -in "$DIST_P12" -inform DER 2>&1 | head -20 || true
+
+          echo "=== keytool password probe ==="
+          for P in "tizenpkcs12passfordsign" "" "tizen" "1234567890" "samsung" "password"; do
+            if keytool -list -keystore "$DIST_P12" -storepass "$P" -storetype PKCS12 -noprompt 2>/dev/null; then
+              echo "keytool SUCCESS with password: '$P'"
+              break
+            else
+              echo "keytool FAIL with password: '$P'"
+            fi
+          done
+
+          echo "=== openssl -legacy probe ==="
+          openssl pkcs12 -legacy -info -in "$DIST_P12" -passin pass:tizenpkcs12passfordsign -noout 2>&1 || true
+
       - name: Set up signing certificate
         env:
           TIZEN_CERT_BASE64: ${{ secrets.TIZEN_CERT_BASE64 }}
