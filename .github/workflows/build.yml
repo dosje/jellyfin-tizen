@@ -83,20 +83,11 @@ jobs:
           echo "Distributor key: $DISTRIBUTOR_KEY"
           ls -la "$DISTRIBUTOR_KEY"
 
-          # Probe for the correct P12 password — it has changed between SDK versions.
-          DIST_PASS=""
-          for CANDIDATE in "tizenpkcs12passfordsign" "" "tizen" "1234567890"; do
-            if openssl pkcs12 -info -in "$DISTRIBUTOR_KEY" -passin "pass:$CANDIDATE" -noout 2>/dev/null; then
-              DIST_PASS="$CANDIDATE"
-              echo "Distributor cert password found: '${DIST_PASS}'"
-              break
-            fi
-          done
-          if [ -z "$DIST_PASS" ] && ! openssl pkcs12 -info -in "$DISTRIBUTOR_KEY" -passin "pass:" -noout 2>/dev/null; then
-            echo "ERROR: could not open distributor cert with any known password"
-            openssl pkcs12 -info -in "$DISTRIBUTOR_KEY" -passin "pass:tizenpkcs12passfordsign" -noout 2>&1 || true
-            exit 1
-          fi
+          # The sdk-public distributor cert uses password tizenpkcs12passfordsign.
+          # Do NOT probe with openssl — OpenSSL 3.x (Ubuntu 22+) can't read these
+          # legacy-format PKCS12 files without -legacy, but the Tizen CLI (Java)
+          # reads them fine with the standard KeyStore API.
+          DIST_PASS="tizenpkcs12passfordsign"
 
           PROFILE_DIR="$HOME/tizen-studio-data/profile"
           mkdir -p "$PROFILE_DIR"
