@@ -66,12 +66,18 @@ jobs:
             echo "No secret found — using self-signed Tizen certificate (developer mode TVs only)"
           fi
 
-          # Find the distributor key bundled with Tizen Studio (path differs per version)
-          DISTRIBUTOR_KEY=$(find "$HOME/tizen-studio" -name "tizen-distributor-signer.p12" 2>/dev/null | head -1)
+          # Find the SDK-public distributor key (compatible with self-signed Tizen certs).
+          # Prefer sdk-public over patches/partner which requires a Samsung partner cert.
+          DISTRIBUTOR_KEY=$(find "$HOME/tizen-studio" -path "*/sdk-public*" -name "tizen-distributor-signer.p12" 2>/dev/null | head -1)
           if [ -z "$DISTRIBUTOR_KEY" ]; then
-            echo "ERROR: tizen-distributor-signer.p12 not found"
-            find "$HOME/tizen-studio" -name "*.p12" 2>/dev/null || true
-            exit 1
+            DISTRIBUTOR_KEY=$(find "$HOME/tizen-studio" -path "*/public*" -name "tizen-distributor-signer.p12" 2>/dev/null | head -1)
+          fi
+          if [ -z "$DISTRIBUTOR_KEY" ]; then
+            echo "All .p12 files in Tizen Studio:"; find "$HOME/tizen-studio" -name "*.p12" 2>/dev/null
+            DISTRIBUTOR_KEY=$(find "$HOME/tizen-studio" -name "tizen-distributor-signer.p12" 2>/dev/null | head -1)
+          fi
+          if [ -z "$DISTRIBUTOR_KEY" ]; then
+            echo "ERROR: tizen-distributor-signer.p12 not found"; exit 1
           fi
           echo "Distributor key: $DISTRIBUTOR_KEY"
 
