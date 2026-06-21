@@ -19,5 +19,8 @@
     "gulp-if": "3.0.0",
     "gulp-scan": "0.1.4"
   },
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "jellyfin-web": "^10.11.0"
+  }
 }
