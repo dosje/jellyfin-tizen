@@ -111,6 +111,12 @@ jobs:
             -e "package*.json" \
             -e "yarn.lock"
 
+          echo "=== profiles.xml content ==="
+          cat "$HOME/tizen-studio-data/profile/profiles.xml" || echo "not found"
+
+          echo "=== author.p12 size ==="
+          ls -la "$HOME/tizen-studio-data/keystore/author/author.p12" || echo "not found"
+
           echo "=== Registered profiles ==="
           tizen security-profiles list || true
 
