@@ -1,0 +1,15 @@
+#!/usr/bin/expect -f
+
+set timeout -1
+
+spawn tizen package -t wgt -o ./release -s Jellyfin -- .buildResult
+
+expect "Author password:"
+
+send -- "1234\r"
+
+expect "Yes: (Y), No: (N) ?"
+
+send -- "N\r"
+
+expect eof

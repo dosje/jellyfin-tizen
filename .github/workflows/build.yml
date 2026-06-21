@@ -19,129 +19,40 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Set up Java (required by Tizen Studio)
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          # Java 17+ rejects the legacy RC2/3DES PKCS12 encryption used by the
-          # Tizen sdk-public distributor cert. Java 11 still allows it.
-          java-version: '11'
-
       - name: Install Tizen Studio CLI
         run: |
-          curl -fsSL -o tizen-studio-cli.bin \
-            "https://download.tizen.org/sdk/Installer/tizen-studio_5.5/web-cli_Tizen_Studio_5.5_ubuntu-64.bin"
-          chmod +x tizen-studio-cli.bin
-          ./tizen-studio-cli.bin --accept-license "$HOME/tizen-studio"
-          echo "$HOME/tizen-studio/tools/ide/bin" >> "$GITHUB_PATH"
+          sudo apt-get install -y expect
+          curl -fsSL -o tizen-installer \
+            "https://download.tizen.org/sdk/Installer/tizen-studio_4.5.1/web-cli_Tizen_Studio_4.5.1_ubuntu-64.bin"
+          chmod +x tizen-installer
+          ./tizen-installer --accept-license "${GITHUB_WORKSPACE}/tizen-studio"
+          rm tizen-installer
+          echo "${GITHUB_WORKSPACE}/tizen-studio/tools/ide/bin" >> "$GITHUB_PATH"
 
-      - name: Diagnose Tizen cert setup
+      - name: Set up signing profile
         run: |
-          echo "=== Java version in PATH ==="
-          java -version 2>&1 || echo "no java in PATH"
+          tizen cli-config "profiles.path=${GITHUB_WORKSPACE}/tizen-studio-data/profile/profiles.xml"
 
-          echo "=== Tizen script Java lookup ==="
-          head -80 "$HOME/tizen-studio/tools/ide/bin/tizen" 2>/dev/null || echo "script not found"
-
-          echo "=== Embedded JDK search ==="
-          find "$HOME/tizen-studio" -name "java" -type f 2>/dev/null | head -5
-
-          DIST_P12=$(find "$HOME/tizen-studio" -path "*/sdk-public*" -name "*.p12" 2>/dev/null | head -1)
-          echo "=== Distributor P12 file ==="
-          ls -la "$DIST_P12"
-
-          echo "=== ASN1 outer structure (no password needed) ==="
-          openssl asn1parse -in "$DIST_P12" -inform DER 2>&1 | head -20 || true
-
-          echo "=== keytool password probe ==="
-          for P in "tizenpkcs12passfordsign" "" "tizen" "1234567890" "samsung" "password"; do
-            if keytool -list -keystore "$DIST_P12" -storepass "$P" -storetype PKCS12 -noprompt 2>/dev/null; then
-              echo "keytool SUCCESS with password: '$P'"
-              break
-            else
-              echo "keytool FAIL with password: '$P'"
-            fi
-          done
-
-          echo "=== openssl -legacy probe ==="
-          openssl pkcs12 -legacy -info -in "$DIST_P12" -passin pass:tizenpkcs12passfordsign -noout 2>&1 || true
-
-      - name: Set up signing certificate
-        env:
-          TIZEN_CERT_BASE64: ${{ secrets.TIZEN_CERT_BASE64 }}
-          TIZEN_CERT_PASSWORD: ${{ secrets.TIZEN_CERT_PASSWORD }}
-        run: |
-          KEYSTORE_DIR="$HOME/tizen-studio-data/keystore/author"
-          mkdir -p "$KEYSTORE_DIR"
-
-          # Always generate a proper Tizen-format author certificate using the
-          # Tizen CLI. A plain keytool RSA cert lacks the Tizen-specific OIDs
-          # that tizen package requires for validation.
-          CERT_PASSWORD="tizenselfcert"
-          tizen certificate \
-            -a "JellyfinAuthor" \
-            -p "$CERT_PASSWORD" \
-            -c "LU" \
-            -s "Luxembourg" \
-            -ct "Luxembourg" \
-            -o "Jellyfin" \
-            -u "Jellyfin" \
-            -n "JellyfinAuthor" \
-            -e "jeff.dostert@proton.me" \
-            -f "author"
-
-          # If a real Samsung/Tizen cert is stored as a secret, override it
-          if [ -n "$TIZEN_CERT_BASE64" ]; then
-            echo "Overriding with Samsung certificate from secret"
-            echo "$TIZEN_CERT_BASE64" | base64 -d > "$KEYSTORE_DIR/author.p12"
-            CERT_PASSWORD="$TIZEN_CERT_PASSWORD"
-          else
-            echo "No secret found — using self-signed Tizen certificate (developer mode TVs only)"
-          fi
-
-          # Find the SDK-public distributor key (compatible with self-signed Tizen certs).
-          # Prefer sdk-public over patches/partner which requires a Samsung partner cert.
-          DISTRIBUTOR_KEY=$(find "$HOME/tizen-studio" -path "*/sdk-public*" -name "tizen-distributor-signer.p12" 2>/dev/null | head -1)
-          if [ -z "$DISTRIBUTOR_KEY" ]; then
-            DISTRIBUTOR_KEY=$(find "$HOME/tizen-studio" -path "*/public*" -name "tizen-distributor-signer.p12" 2>/dev/null | head -1)
-          fi
-          if [ -z "$DISTRIBUTOR_KEY" ]; then
-            DISTRIBUTOR_KEY=$(find "$HOME/tizen-studio" -name "tizen-distributor-signer.p12" 2>/dev/null | head -1)
-          fi
-          if [ -z "$DISTRIBUTOR_KEY" ]; then
-            echo "ERROR: tizen-distributor-signer.p12 not found"
-            find "$HOME/tizen-studio" -name "*.p12" 2>/dev/null
-            exit 1
-          fi
-          echo "Distributor key: $DISTRIBUTOR_KEY"
-          ls -la "$DISTRIBUTOR_KEY"
-
-          # The sdk-public distributor cert uses password tizenpkcs12passfordsign.
-          # Do NOT probe with openssl — OpenSSL 3.x (Ubuntu 22+) can't read these
-          # legacy-format PKCS12 files without -legacy, but the Tizen CLI (Java)
-          # reads them fine with the standard KeyStore API.
-          DIST_PASS="tizenpkcs12passfordsign"
-
-          PROFILE_DIR="$HOME/tizen-studio-data/profile"
-          mkdir -p "$PROFILE_DIR"
-          tizen cli-config "default.profiles.path=$PROFILE_DIR/profiles.xml"
-
-          # Use the Tizen CLI to create the security profile so it encrypts the
-          # passwords correctly in profiles.xml. Manually writing plaintext passwords
-          # fails because tizen package tries to decrypt them.
           tizen security-profiles add \
-            -n JellyfinProfile \
-            -a "$KEYSTORE_DIR/author.p12" \
-            -p "$CERT_PASSWORD" \
-            -d "$DISTRIBUTOR_KEY" \
-            -dp "$DIST_PASS"
+            -n Jellyfin \
+            -a "${GITHUB_WORKSPACE}/tizencert.p12" \
+            -p 1234
 
-          echo "Profile created. profiles.xml:"
-          cat "$PROFILE_DIR/profiles.xml"
+          # Tizen 4.5.1 stores passwords as paths to .pwd files in profiles.xml.
+          # Replace those paths with plaintext so tizen package prompts interactively
+          # (the expect script then supplies the password).
+          sed -i "s|${GITHUB_WORKSPACE}/tizencert.pwd|1234|g" \
+            "${GITHUB_WORKSPACE}/tizen-studio-data/profile/profiles.xml"
+          sed -i "s|${GITHUB_WORKSPACE}/tizen-studio-data/tools/certificate-generator/certificates/distributor/tizen-distributor-signer.pwd|tizenpkcs12passfordsigner|g" \
+            "${GITHUB_WORKSPACE}/tizen-studio-data/profile/profiles.xml"
+          sed -i 's|password=""|password="tizenpkcs12passfordsigner"|g' \
+            "${GITHUB_WORKSPACE}/tizen-studio-data/profile/profiles.xml"
+
+          echo "profiles.xml:"
+          cat "${GITHUB_WORKSPACE}/tizen-studio-data/profile/profiles.xml"
 
       - name: Clone and build Jellyfin Web
         run: |
-          # Match the branch to the jellyfin-web version declared in package.json
           git clone --depth 1 -b release-10.10.z \
             https://github.com/jellyfin/jellyfin-web.git ../jellyfin-web
           cd ../jellyfin-web
@@ -161,23 +72,9 @@ jobs:
             -e "package*.json" \
             -e "yarn.lock"
 
-          echo "=== profiles.xml content ==="
-          cat "$HOME/tizen-studio-data/profile/profiles.xml" || echo "not found"
-
-          echo "=== author.p12 size ==="
-          ls -la "$HOME/tizen-studio-data/keystore/author/author.p12" || echo "not found"
-
-          echo "=== Registered profiles ==="
-          tizen security-profiles list || true
-
-          echo "=== cli-config ==="
-          tizen cli-config --list || true
-
-          tizen package -t wgt -s JellyfinProfile -o . -- .buildResult || {
-            echo "=== CLI log ==="
-            cat "$HOME/tizen-studio-data/cli/logs/cli.log" 2>/dev/null || \
-            cat "tizen-studio-data/cli/logs/cli.log" 2>/dev/null || \
-            echo "cli.log not found"
+          mkdir -p release
+          expect ./package.exp || {
+            cat "${GITHUB_WORKSPACE}/tizen-studio-data/cli/logs/cli.log" 2>/dev/null || true
             exit 1
           }
 
@@ -185,5 +82,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Jellyfin-${{ github.ref_name }}-${{ github.run_number }}
-          path: Jellyfin.wgt
+          path: release/Jellyfin.wgt
           retention-days: 30
