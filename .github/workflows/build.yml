@@ -110,7 +110,20 @@ jobs:
             -e "node_modules/*" \
             -e "package*.json" \
             -e "yarn.lock"
-          tizen package -t wgt -s JellyfinProfile -o . -- .buildResult
+
+          echo "=== Registered profiles ==="
+          tizen security-profiles list || true
+
+          echo "=== cli-config ==="
+          tizen cli-config --list || true
+
+          tizen package -t wgt -s JellyfinProfile -o . -- .buildResult || {
+            echo "=== CLI log ==="
+            cat "$HOME/tizen-studio-data/cli/logs/cli.log" 2>/dev/null || \
+            cat "tizen-studio-data/cli/logs/cli.log" 2>/dev/null || \
+            echo "cli.log not found"
+            exit 1
+          }
 
       - name: Upload WGT artifact
         uses: actions/upload-artifact@v4
