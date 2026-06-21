@@ -41,26 +41,29 @@ jobs:
           KEYSTORE_DIR="$HOME/tizen-studio-data/keystore/author"
           mkdir -p "$KEYSTORE_DIR"
 
-          # Always generate a self-signed cert so we always have a valid .p12
+          # Always generate a proper Tizen-format author certificate using the
+          # Tizen CLI. A plain keytool RSA cert lacks the Tizen-specific OIDs
+          # that tizen package requires for validation.
           CERT_PASSWORD="tizenselfcert"
-          keytool -genkeypair \
-            -alias author \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 3650 \
-            -storetype PKCS12 \
-            -storepass "$CERT_PASSWORD" \
-            -keypass "$CERT_PASSWORD" \
-            -dname "CN=JellyfinAuthor, O=Jellyfin, C=LU" \
-            -keystore "$KEYSTORE_DIR/author.p12"
+          tizen certificate \
+            -a "JellyfinAuthor" \
+            -p "$CERT_PASSWORD" \
+            -c "LU" \
+            -s "Luxembourg" \
+            -ct "Luxembourg" \
+            -o "Jellyfin" \
+            -u "Jellyfin" \
+            -n "JellyfinAuthor" \
+            -e "jeff.dostert@proton.me" \
+            -f "author"
 
-          # If a real Samsung/Tizen cert is stored as a secret, use that instead
+          # If a real Samsung/Tizen cert is stored as a secret, override it
           if [ -n "$TIZEN_CERT_BASE64" ]; then
             echo "Overriding with Samsung certificate from secret"
             echo "$TIZEN_CERT_BASE64" | base64 -d > "$KEYSTORE_DIR/author.p12"
             CERT_PASSWORD="$TIZEN_CERT_PASSWORD"
           else
-            echo "No secret found — using self-signed certificate (developer mode TVs only)"
+            echo "No secret found — using self-signed Tizen certificate (developer mode TVs only)"
           fi
 
           # Find the distributor key bundled with Tizen Studio (path differs per version)
